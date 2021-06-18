@@ -1,0 +1,23 @@
+<html>
+	<body>
+		<div>{{ message }}</div>
+		<form action="{% url 'login' %}" method="post">
+			{% csrf_token %}
+			<input type="hidden" name="return_uri" value="{{ return_uri }}"/>
+			<table>
+				<tr>
+					<th>Ejudge login</th>
+					<td><input type="text" name="login"/></td>
+				</tr>
+				<tr>
+					<th>Password</th>
+					<td><input type="password" name="password"/></td>
+				</tr>
+				<tr>
+					<th></th>
+					<td><input type="submit" value="Log in"/></td>
+				</tr>
+			</table>
+		</form>
+	</body>
+</html>

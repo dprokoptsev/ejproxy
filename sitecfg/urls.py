@@ -17,14 +17,11 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf.urls.static import static
 
-import ejproxy.views
 from . import settings
-
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-
-    path('', ejproxy.views.index, name='index'),
+    path('', include('ejproxy.urls')),
 ]
 
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
