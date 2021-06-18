@@ -1,6 +1,6 @@
 import datetime
 import functools
-import lxml
+import lxml.etree
 import re
 import requests
 
@@ -10,7 +10,6 @@ from django.conf import settings
 
 from django.views.decorators.csrf import csrf_exempt
 
-from . import ejudge
 from . import models
 
 
