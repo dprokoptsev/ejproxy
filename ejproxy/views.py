@@ -3,10 +3,12 @@ import functools
 import lxml.etree
 import re
 import requests
+import urllib
 
 from django.http import HttpResponse
 from django.shortcuts import render, redirect
 from django.conf import settings
+import django.urls
 
 from django.middleware import csrf
 
@@ -84,6 +86,32 @@ def add_csrf_token(request, html):
         elt.attrib["name"] = "csrfmiddlewaretoken"
         elt.attrib["value"] = token
         form.getchildren()[0].addprevious(elt)
+
+
+@forward_postprocessor
+def prettify_links(request, html):
+    sid_to_contest_id = {}
+    for a in html.xpath("//a[@href]"):
+        url = urllib.parse.urlparse(a.attrib["href"])
+        if not url.scheme.startswith("http"):
+            continue
+
+        params = dict(urllib.parse.parse_qsl(url.query))
+
+        if url.path == "/cgi-bin/new-master" and params.get("action") == "3":
+            a.attrib["href"] = django.urls.reverse(contest, kwargs={"contest_id": params["contest_id"]})
+            continue
+
+        if "SID" in params:
+            p = models.Participation.objects.filter(ej_sid=params["SID"])
+            if p:
+                sid_to_contest_id[params["SID"]] = p[0].ej_contest_id
+
+        if url.path == "/cgi-bin/new-master" and params.get("action") == "36":
+            a.attrib["href"] = django.urls.reverse(contest_run, kwargs={
+                "contest_id": sid_to_contest_id[params["SID"]],
+                "run_id": params["run_id"]
+            })
 
 
 def serve_control(request):
