@@ -8,7 +8,7 @@ from django.http import HttpResponse
 from django.shortcuts import render, redirect
 from django.conf import settings
 
-from django.views.decorators.csrf import csrf_exempt
+from django.middleware import csrf
 
 from . import models
 
@@ -44,20 +44,48 @@ def fetch(request, *, sid=None, cookie=None, url=None, params=None):
     )
 
 
-def forward(response):
+_forward_postprocessors = []
+def forward_postprocessor(fn):
+    _forward_postprocessors.append(fn)
+    return fn
+
+
+def forward(request, response):
     DISALLOWED_HEADERS = {
-        "Date", "Server", "Keep-Alive", "Connection", "Transfer-Encoding"
+        "Date", "Server", "Keep-Alive", "Connection", "Transfer-Encoding",
+        "Content-Length", "Set-Cookie",
     }
-    ret = HttpResponse(status=response.status_code, content=response.content)
+    content = response.content
+
+    if response.headers["Content-Type"].startswith("text/html"):
+        content = lxml.etree.fromstring(content, lxml.etree.HTMLParser())
+        for p in _forward_postprocessors:
+            p(request, content)
+        content = lxml.etree.tostring(content)
+
+    ret = HttpResponse(status=response.status_code, content=content)
     for k, v in response.headers.items():
         if k in DISALLOWED_HEADERS:
             continue
-        print(f"  - hdr: {k} = {v}")
         ret.headers[k] = v
     return ret
 
 
-@csrf_exempt
+@forward_postprocessor
+def add_csrf_token(request, html):
+    token = None
+    for form in html.xpath("//form[@method='post']"):
+        if not len(form.getchildren()):
+            continue
+        if token is None:
+            token = csrf.get_token(request)
+        elt = lxml.etree.Element("input")
+        elt.attrib["type"] = "hidden"
+        elt.attrib["name"] = "csrfmiddlewaretoken"
+        elt.attrib["value"] = token
+        form.getchildren()[0].addprevious(elt)
+
+
 def serve_control(request):
     sid = cookie = None
     if "user" in request.session:
@@ -84,16 +112,15 @@ def serve_control(request):
         if return_url:
             return redirect(return_url)
 
-    return forward(resp)
+    return forward(request, resp)
 
 
-@csrf_exempt
 def new_master(request):
     cookie = None
     if "user" in request.session:
         u = models.User.objects.filter(pk=request.session["user"])
         cookie = u[0].ej_cookie if u else None
-    return forward(fetch(request, cookie=cookie))
+    return forward(request, fetch(request, cookie=cookie))
 
 
 def wrapped_new_master(request, contest_id, **params):
@@ -119,7 +146,7 @@ def wrapped_new_master(request, contest_id, **params):
                 p = None
         
         if p:
-            return forward(resp)
+            return forward(request, resp)
 
     login = fetch(request, url="/cgi-bin/new-master",
                   sid=user.ej_srvctl_sid, cookie=user.ej_cookie,
@@ -131,7 +158,7 @@ def wrapped_new_master(request, contest_id, **params):
     else:
         return HttpResponse(b"<h1>Forbidden</h1>", status=403)
 
-    return forward(fetch(request, url="/cgi-bin/new-master",
+    return forward(request, fetch(request, url="/cgi-bin/new-master",
                          sid=p.ej_sid, cookie=user.ej_cookie, params=params))
 
 
