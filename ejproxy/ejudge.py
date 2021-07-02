@@ -13,6 +13,8 @@ def _runcgi(request, handle, method="GET", **query_params):
         "SCRIPT_NAME": f"/cgi-bin/{handle}",
         "REQUEST_METHOD": method
     }
+    if request.scheme == "https":
+        env["HTTPS"] = "yes"
     if "EJSID" in request.COOKIES:
         env["HTTP_COOKIE"] = f"EJSID={request.COOKIES['EJSID']}"
 
@@ -27,7 +29,8 @@ def _runcgi(request, handle, method="GET", **query_params):
     result = subprocess.run(
         f"{CGI_ROOT}/{handle}",
         input=stdin,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         check=True,
         encoding="utf-8",
         env=env
@@ -93,5 +96,7 @@ def contest_login(request, contest_id):
     sid = srvctl_sid(request)
     hdrs, resp = _runcgi(request, "new-master", SID=sid, action=3, contest_id=contest_id)
     if "Location" not in hdrs:
+        if _xpath(resp, "//title").text.endswith("Permission denied"):
+            return None
         raise RuntimeError("something went wrong")
     return _breakdown_url(hdrs["Location"])["SID"]

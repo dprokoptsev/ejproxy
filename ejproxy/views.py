@@ -1,13 +1,12 @@
 import datetime
 import functools
 
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import render, redirect
+from django.conf import settings
 
 from . import ejudge
 from . import models
-
-EJUDGE_PREFIX = "http://ejudgetest/cgi-bin"
 
 
 def require_user(fn):
@@ -23,7 +22,7 @@ def require_user(fn):
 
 @require_user
 def index(request, user):
-    return redirect(f"{EJUDGE_PREFIX}/serve-control?SID={user.ej_srvctl_sid}")
+    return redirect(f"{settings.EJUDGE_HOST}/cgi-bin/serve-control?SID={user.ej_srvctl_sid}")
 
 
 def login(request):
@@ -56,19 +55,24 @@ def get_participation(request, user, contest_id):
 
     if not p:
         sid = ejudge.contest_login(request, contest_id)
-        p = models.Participation(user=user, ej_contest_id=contest_id, ej_sid=sid)
-        p.save()
+        if sid:
+            p = models.Participation(user=user, ej_contest_id=contest_id, ej_sid=sid)
+            p.save()
     return p
 
 @require_user
 def contest(request, user, contest_id):
     p = get_participation(request, user, contest_id)
-    return redirect(f"{EJUDGE_PREFIX}/new-master?SID={p.ej_sid}")
+    if not p:
+        return HttpResponseForbidden()
+    return redirect(f"{settings.EJUDGE_HOST}/cgi-bin/new-master?SID={p.ej_sid}")
 
 
 @require_user
 def contest_run(request, user, contest_id, run_id):
     p = get_participation(request, user, contest_id)
-    return redirect(f"{EJUDGE_PREFIX}/new-master?SID={p.ej_sid}&action=36&run_id={run_id}")
+    if not p:
+        return HttpResponseForbidden()
+    return redirect(f"{settings.EJUDGE_HOST}/cgi-bin/new-master?SID={p.ej_sid}&action=36&run_id={run_id}")
 
 
