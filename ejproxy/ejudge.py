@@ -4,12 +4,15 @@ import urllib.parse
 import lxml.etree
 import re
 
+from django.http import HttpResponse
+
 CGI_ROOT = "/opt/ejudge/libexec/ejudge/cgi-bin"
 
 def _runcgi(request, handle, method="GET", **query_params):
     query_string = urllib.parse.urlencode(query_params)
     env = {
         "REMOTE_ADDR": request.META["REMOTE_ADDR"],
+        "HTTP_HOST": request.META["HTTP_HOST"],
         "SCRIPT_NAME": f"/cgi-bin/{handle}",
         "REQUEST_METHOD": method
     }
@@ -58,7 +61,20 @@ def _xpath(html, xp):
 
 def _breakdown_url(url):
     return dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query))
-    
+
+
+_postprocessors = []
+
+def postprocessor(fn):
+    _postprocessors.append(fn)
+    return fn
+
+def forward(request, handle, method="GET", **query_params):
+    _, content = _runcgi(request, handle, method, **query_params)
+    for fn in _postprocessors:
+        fn(request, content)
+    return HttpResponse(lxml.etree.tostring(content))
+
 
 def login(request, login, password):
     """Logs in to ejudge serve-control.
